@@ -170,6 +170,11 @@
   #monkeyArt svg{max-width:100%;height:auto}
   .box .rule{font-size:15px;color:var(--muted);margin:0 0 20px}
   @media (prefers-reduced-motion:reduce){.tr,#ship{transition:none}.delta.show{animation:none;opacity:1}}
+  .field{display:flex;flex-direction:column;gap:6px;text-align:left;margin-bottom:14px}
+  .field label{font-size:14px;color:var(--muted)}
+  .field input{font:inherit;font-size:20px;padding:10px 14px;border-radius:12px;border:1px solid var(--line);background:var(--card2);color:var(--ink);outline:none}
+  .field input:focus{border-color:var(--violet);box-shadow:0 0 0 3px rgba(139,92,246,.25)}
+  .who{font-size:13px;color:var(--muted);margin-top:6px}
 </style>
 </head>
 <body>
@@ -366,6 +371,16 @@
     </div>
   </section>
 </main>
+
+<div class="end" id="nameModal" style="z-index:40">
+  <div class="box" style="width:min(420px,100%)">
+    <h2 style="margin-bottom:6px">Chi gioca?</h2>
+    <p style="margin:6px 0 18px">Scrivi il tuo nome o il tuo soprannome: le tue risposte vengono inviate all'insegnante.</p>
+    <div class="field"><label for="stName">Nome o soprannome</label><input id="stName" maxlength="30" autocomplete="off"></div>
+    <div class="field"><label for="stClass">Classe (per esempio 2B)</label><input id="stClass" maxlength="8" autocomplete="off"></div>
+    <button class="btn" id="stGo">Inizia</button>
+  </div>
+</div>
 
 <div class="end" id="levelIntro" style="z-index:25">
   <div class="box">
@@ -615,6 +630,24 @@ function showTab(which){
 $("tabQuiz").onclick = () => showTab("quiz");
 $("tabWheel").onclick = () => showTab("wheel");
 
+/* =============== STATISTICHE (invio al foglio Google dell'insegnante) =============== */
+// Incolla qui l'indirizzo dell'app web di Google Apps Script. Vuoto = nessun invio e nessuna richiesta del nome.
+const STATS_URL = "https://script.google.com/macros/s/AKfycbxOt6ykxsI-kkj7-O-L8iB9XRwYzBChGSczm44ixL46P4xnesdCkINdEwBtiAIpoYds/exec";
+const TENSE_SHORT = {pres:"presente indicativo", imp:"imperfetto indicativo", pr:"passato remoto", fut:"futuro semplice",
+  pp:"passato prossimo", cong:"congiuntivo presente", congimp:"congiuntivo imperfetto", cond:"condizionale presente",
+  impv:"imperativo", part:"participio passato", ger:"gerundio presente", infp:"infinito passato", gerp:"gerundio passato"};
+let student = {name:"", cls:""};
+const sessionId = Math.random().toString(36).slice(2,10);
+function sendStat(q, given, ok){
+  if(!STATS_URL || !student.name) return;
+  try{
+    fetch(STATS_URL, {method:"POST", mode:"no-cors", headers:{"Content-Type":"text/plain;charset=utf-8"},
+      body:JSON.stringify({studente:student.name, classe:student.cls, sessione:sessionId, livello:level+1,
+        verbo:q.v, tempo:TENSE_SHORT[q.k], persona:q.p||"", domanda:q.t, risposta:given, attesa:q.a.join(" / "),
+        corretta:ok, bonus:q.bonus})}).catch(()=>{});
+  }catch(e){}
+}
+
 /* =============== QUIZ A LIVELLI =============== */
 let level=0, deck=[], idx=0, errors=0, points=0, answered=false, over=true;
 
@@ -720,6 +753,7 @@ function check(){
       fb.textContent = "Sbagliato. Risposta corretta: " + q.a.join(" / ");
     }
   }
+  sendStat(q, raw.trim(), ok);
   showDelta(points-before);
   $("score").classList.remove("pop"); void $("score").offsetWidth; $("score").classList.add("pop");
   $("score").textContent = `Punti: ${points}`;
@@ -751,6 +785,14 @@ function winLevel(){
   Sfx.win();
   $("monkeyEnd").classList.add("on");
 }
+$("stGo").onclick = () => {
+  const n = $("stName").value.trim();
+  if(!n){ $("stName").focus(); return; }
+  student = {name:n, cls:$("stClass").value.trim()};
+  try{ localStorage.setItem("stud", JSON.stringify(student)); }catch(e){}
+  $("nameModal").classList.remove("on");
+  $("liGo").focus();
+};
 $("check").onclick = check;
 $("next").onclick = next;
 $("liGo").onclick = () => { $("levelIntro").classList.remove("on"); over=false; showQuestion(); };
@@ -761,6 +803,7 @@ $("startLevel").onchange = newGame;
 $("ans").addEventListener("keydown", e => { if(e.key==="Enter"){ e.preventDefault(); check(); }});
 document.addEventListener("keydown", e => {
   if(e.key!=="Enter") return;
+  if($("nameModal").classList.contains("on")){ e.preventDefault(); $("stGo").click(); return; }
   if($("monkeyEnd").classList.contains("on")){ e.preventDefault(); $("monkeyNext").click(); return; }
   if($("end").classList.contains("on")){ e.preventDefault(); $("again").click(); return; }
   if($("levelIntro").classList.contains("on")){ e.preventDefault(); $("liGo").click(); return; }
@@ -1033,6 +1076,10 @@ $("sfxBtn").onclick = () => {
 
 /* =============== AVVIO =============== */
 loadNames();
+if(STATS_URL){
+  try{ const sv = JSON.parse(localStorage.getItem("stud")||"null"); if(sv){ $("stName").value=sv.name||""; $("stClass").value=sv.cls||""; } }catch(e){}
+  $("nameModal").classList.add("on");
+}
 newGame();
 drawWheel();
 </script>

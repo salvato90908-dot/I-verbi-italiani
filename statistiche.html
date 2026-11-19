@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Statistiche del gioco sui verbi</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{--bg:#0d0e1c;--card:#161831;--card2:#1d2040;--line:rgba(255,255,255,.09);--ink:#eceefb;--muted:#9aa0c8;
+        --violet:#8b5cf6;--cyan:#22d3ee;--good:#34d399;--bad:#fb7185;--amber:#fbbf24}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:'Space Grotesk',system-ui,sans-serif;color:var(--ink);
+       background:radial-gradient(900px 500px at 12% -10%,rgba(139,92,246,.28),transparent 60%),var(--bg);min-height:100vh}
+  header{padding:26px 20px 6px;max-width:1150px;margin:0 auto}
+  h1{margin:0;font-size:clamp(24px,4vw,34px);letter-spacing:-.5px}
+  .sub{color:var(--muted);margin:4px 0 0}
+  main{max-width:1150px;margin:0 auto;padding:12px 20px 60px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:20px;margin-bottom:18px;box-shadow:0 14px 40px rgba(0,0,0,.3)}
+  h2{margin:0 0 12px;font-size:19px}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
+  .f{display:flex;flex-direction:column;gap:5px;font-size:13px;color:var(--muted)}
+  input,select{font:inherit;font-size:15px;padding:9px 12px;border-radius:10px;border:1px solid var(--line);background:var(--card2);color:var(--ink);outline:none}
+  input:focus,select:focus{border-color:var(--violet)}
+  button{font:inherit;font-weight:600;font-size:15px;border:none;cursor:pointer;color:#fff;background:var(--violet);padding:10px 18px;border-radius:10px}
+  button:hover{filter:brightness(1.1)} button.alt{background:var(--card2);border:1px solid var(--line);color:var(--ink)}
+  .msg{margin-top:10px;font-size:14px;color:var(--muted)} .msg.err{color:var(--bad)}
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+  .kpi{background:var(--card2);border:1px solid var(--line);border-radius:14px;padding:14px}
+  .kpi b{display:block;font-size:30px;letter-spacing:-.5px} .kpi span{font-size:13px;color:var(--muted)}
+  table{width:100%;border-collapse:collapse;font-size:14.5px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--muted);font-weight:500;font-size:13px;cursor:pointer;white-space:nowrap;user-select:none}
+  th:hover{color:var(--ink)}
+  td.n{text-align:right;font-variant-numeric:tabular-nums} th.n{text-align:right}
+  .scroll{overflow-x:auto}
+  .bar{display:inline-block;height:8px;border-radius:99px;background:linear-gradient(90deg,var(--good),var(--cyan));vertical-align:middle;margin-left:8px}
+  .heat{text-align:center;font-variant-numeric:tabular-nums;border-radius:8px;min-width:74px}
+  .ko{color:var(--bad)} .ok{color:var(--good)}
+  .hide{display:none}
+  .pill{display:inline-block;padding:2px 9px;border-radius:7px;background:var(--card2);border:1px solid var(--line);font-size:12.5px;color:var(--muted)}
+</style>
+</head>
+<body>
+<header>
+  <h1>Statistiche del gioco sui verbi</h1>
+  <p class="sub">Pagina riservata all'insegnante. I dati arrivano dal foglio Google collegato al gioco.</p>
+</header>
+<main>
+  <section class="card" id="cfg">
+    <h2>Collegamento</h2>
+    <div class="row">
+      <label class="f">Indirizzo dell'app web (termina con /exec)<input id="url" size="48" autocomplete="off"></label>
+      <label class="f">Parola chiave<input id="key" type="password" autocomplete="off"></label>
+      <button id="load">Carica dati</button>
+    </div>
+    <div class="msg" id="msg">Inserisci l'indirizzo e la parola chiave scelta nello script di Google.</div>
+  </section>
+
+  <div id="out" class="hide">
+    <section class="card">
+      <div class="row" style="margin-bottom:14px">
+        <label class="f">Classe<select id="fClass"></select></label>
+        <label class="f">Studente<select id="fStud"></select></label>
+        <button class="alt" id="refresh">Aggiorna</button>
+      </div>
+      <div class="kpis" id="kpis"></div>
+    </section>
+
+    <section class="card">
+      <h2>Errori per studente</h2>
+      <div class="scroll"><table id="tStud"></table></div>
+    </section>
+
+    <section class="card">
+      <h2>Errori per verbo e tempo</h2>
+      <p class="sub" style="margin:-6px 0 12px">Ogni cella mostra errori / risposte. Più il rosso è intenso, più la forma è stata sbagliata.</p>
+      <div class="scroll"><table id="tHeat"></table></div>
+    </section>
+
+    <section class="card">
+      <h2>Dettaglio delle risposte sbagliate</h2>
+      <div class="row" style="margin-bottom:12px">
+        <label class="f">Cerca<input id="q" placeholder="verbo, tempo, parola…"></label>
+      </div>
+      <div class="scroll"><table id="tDet"></table></div>
+    </section>
+  </div>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+let ROWS = [], sortKey = "err", sortDir = -1;
+
+$("url").value = "https://script.google.com/macros/s/AKfycbxOt6ykxsI-kkj7-O-L8iB9XRwYzBChGSczm44ixL46P4xnesdCkINdEwBtiAIpoYds/exec";
+try{ $("url").value = localStorage.getItem("statsUrl") || $("url").value; }catch(e){}
+
+function setMsg(t, err){ $("msg").textContent = t; $("msg").className = "msg" + (err ? " err" : ""); }
+
+async function load(){
+  const url = $("url").value.trim(), key = $("key").value;
+  if(!url || !key){ setMsg("Servono sia l'indirizzo sia la parola chiave.", true); return; }
+  setMsg("Carico i dati…");
+  try{
+    const r = await fetch(url + (url.includes("?") ? "&" : "?") + "key=" + encodeURIComponent(key));
+    const j = await r.json();
+    if(j.error){ setMsg("Parola chiave errata.", true); return; }
+    ROWS = (j.rows || []).map(x => ({
+      data:x.data, studente:String(x.studente||"").trim(), classe:String(x.classe||"").trim(),
+      livello:x.livello, verbo:x.verbo, tempo:x.tempo, persona:x.persona, domanda:x.domanda,
+      risposta:x.risposta, attesa:x.attesa, ok:Number(x.corretta)===1 || x.corretta===true, bonus:Number(x.bonus)===1
+    }));
+    try{ localStorage.setItem("statsUrl", url); }catch(e){}
+    setMsg(`Dati caricati: ${ROWS.length} risposte.`);
+    $("out").classList.remove("hide");
+    fillFilters(); render();
+  }catch(e){
+    setMsg("Non riesco a leggere i dati. Controlla l'indirizzo e che l'app web sia pubblicata per \"Chiunque\".", true);
+  }
+}
+
+function fillFilters(){
+  const cls = [...new Set(ROWS.map(r => r.classe).filter(Boolean))].sort();
+  $("fClass").innerHTML = `<option value="">Tutte</option>` + cls.map(c => `<option>${esc(c)}</option>`).join("");
+  fillStud();
+}
+function fillStud(){
+  const c = $("fClass").value;
+  const st = [...new Set(ROWS.filter(r => !c || r.classe===c).map(r => r.studente).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"it"));
+  const prev = $("fStud").value;
+  $("fStud").innerHTML = `<option value="">Tutti</option>` + st.map(s => `<option>${esc(s)}</option>`).join("");
+  if(st.includes(prev)) $("fStud").value = prev;
+}
+function filtered(){
+  const c = $("fClass").value, s = $("fStud").value;
+  return ROWS.filter(r => (!c || r.classe===c) && (!s || r.studente===s));
+}
+
+function render(){
+  const rows = filtered();
+  const tot = rows.length, ok = rows.filter(r => r.ok).length, ko = tot-ok;
+  const stud = new Set(rows.map(r => r.studente+"|"+r.classe)).size;
+  $("kpis").innerHTML = [
+    [stud,"studenti"],[tot,"risposte"],[ok,"corrette"],[ko,"sbagliate"],[tot?Math.round(ok/tot*100)+"%":"–","corrette sul totale"]
+  ].map(([v,l]) => `<div class="kpi"><b>${esc(v)}</b><span>${l}</span></div>`).join("");
+
+  // per studente
+  const m = new Map();
+  rows.forEach(r => {
+    const k = r.studente+"|"+r.classe;
+    if(!m.has(k)) m.set(k, {studente:r.studente, classe:r.classe, tot:0, ok:0, err:0, ult:""});
+    const o = m.get(k); o.tot++; r.ok ? o.ok++ : o.err++;
+    if(String(r.data) > o.ult) o.ult = String(r.data);
+  });
+  let list = [...m.values()].map(o => ({...o, pct: o.tot ? Math.round(o.ok/o.tot*100) : 0}));
+  list.sort((a,b) => {
+    const x = a[sortKey], y = b[sortKey];
+    return (typeof x==="string" ? x.localeCompare(y,"it") : x-y) * sortDir;
+  });
+  const cols = [["studente","Studente"],["classe","Classe"],["tot","Risposte"],["ok","Corrette"],["err","Sbagliate"],["pct","% corrette"]];
+  $("tStud").innerHTML = "<thead><tr>" + cols.map(([k,l]) => `<th class="${["tot","ok","err","pct"].includes(k)?"n":""}" data-k="${k}">${l}${sortKey===k?(sortDir<0?" ▼":" ▲"):""}</th>`).join("") + "</tr></thead><tbody>" +
+    (list.length ? list.map(o => `<tr><td>${esc(o.studente)}</td><td>${esc(o.classe)}</td><td class="n">${o.tot}</td><td class="n ok">${o.ok}</td><td class="n ko">${o.err}</td><td class="n">${o.pct}% <span class="bar" style="width:${Math.max(2,o.pct*0.6)}px"></span></td></tr>`).join("") : `<tr><td colspan="6">Nessun dato.</td></tr>`) + "</tbody>";
+  $("tStud").querySelectorAll("th").forEach(th => th.onclick = () => {
+    const k = th.dataset.k; if(sortKey===k) sortDir = -sortDir; else { sortKey = k; sortDir = (k==="studente"||k==="classe") ? 1 : -1; }
+    render();
+  });
+
+  // heatmap verbo x tempo
+  const verbs = [...new Set(rows.map(r => r.verbo))].filter(Boolean);
+  const order = ["stare","dare","andare","fare","parlare","sentire","temere","amare"];
+  verbs.sort((a,b) => (order.indexOf(a)<0?99:order.indexOf(a)) - (order.indexOf(b)<0?99:order.indexOf(b)));
+  const tenses = [...new Set(rows.map(r => r.tempo))].filter(Boolean).sort((a,b)=>a.localeCompare(b,"it"));
+  const cell = new Map(); rows.forEach(r => { const k = r.verbo+"|"+r.tempo; const o = cell.get(k) || {t:0,e:0}; o.t++; if(!r.ok) o.e++; cell.set(k,o); });
+  $("tHeat").innerHTML = "<thead><tr><th>Tempo / modo</th>" + verbs.map(v => `<th class="n">${esc(v)}</th>`).join("") + "<th class=\"n\">Totale</th></tr></thead><tbody>" +
+    (tenses.length ? tenses.map(t => {
+      let te = 0, tt = 0;
+      const tds = verbs.map(v => {
+        const o = cell.get(v+"|"+t); if(!o) return `<td class="heat" style="color:#656b96">·</td>`;
+        te += o.e; tt += o.t; const rate = o.e/o.t;
+        return `<td class="heat" style="background:rgba(251,113,133,${(rate*0.75).toFixed(2)})">${o.e} / ${o.t}</td>`;
+      }).join("");
+      const rt = tt ? te/tt : 0;
+      return `<tr><td>${esc(t)}</td>${tds}<td class="heat" style="background:rgba(251,113,133,${(rt*0.75).toFixed(2)});font-weight:700">${te} / ${tt}</td></tr>`;
+    }).join("") : `<tr><td>Nessun dato.</td></tr>`) + "</tbody>";
+
+  // dettaglio errori
+  const q = $("q").value.trim().toLowerCase();
+  const det = rows.filter(r => !r.ok && (!q || [r.studente,r.verbo,r.tempo,r.domanda,r.risposta,r.attesa].join(" ").toLowerCase().includes(q)))
+                  .sort((a,b) => String(b.data).localeCompare(String(a.data)));
+  $("tDet").innerHTML = "<thead><tr><th>Studente</th><th>Domanda</th><th>Risposta data</th><th>Risposta corretta</th><th>Liv.</th></tr></thead><tbody>" +
+    (det.length ? det.map(r => `<tr><td>${esc(r.studente)}<br><span class="pill">${esc(r.classe)}</span></td><td>${esc(r.domanda)}${r.bonus?' <span class="pill">bonus</span>':''}</td><td class="ko">${esc(r.risposta)}</td><td class="ok">${esc(r.attesa)}</td><td>${esc(r.livello)}</td></tr>`).join("") : `<tr><td colspan="5">Nessun errore registrato.</td></tr>`) + "</tbody>";
+}
+
+$("load").onclick = load;
+$("refresh").onclick = load;
+$("fClass").onchange = () => { fillStud(); render(); };
+$("fStud").onchange = render;
+$("q").oninput = render;
+$("key").addEventListener("keydown", e => { if(e.key==="Enter") load(); });
+</script>
+</body>
+</html>
